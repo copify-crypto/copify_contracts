@@ -35,7 +35,11 @@ module.exports = {
          arb: {
             url: CUSTOM_RPC_URL,
             accounts: [PRIVATE_KEY]
-         }
+         },
+         blast: {
+          url: CUSTOM_RPC_URL,
+          accounts: [PRIVATE_KEY]
+       }
     },
     etherscan: {
         apiKey: ETHERSCAN_API_KEY
@@ -60,11 +64,14 @@ module.exports = {
             {
               version: "0.6.11",
             },
+            {
+              version: "0.6.6",
+            },
         ],
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 999999,
           },
          }
     },
