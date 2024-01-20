@@ -526,6 +526,7 @@ interface IUniswapV2Factory {
 contract TokenWithCommission is ERC20, Ownable {
 
     address public immutable uniswapV2Pair;
+    uint8 public immutable newDecimals;
 
     uint256 public buyFee; // 100 = 10%
     uint256 public sellFee; // 100 = 10%
@@ -533,6 +534,7 @@ contract TokenWithCommission is ERC20, Ownable {
     constructor(
         string memory _name,
         string memory _symbol,
+        uint8 _decimals,
         address _uniswapV2RouterAddress,
         uint256 _totalSupply,
         uint256 _buyFee,
@@ -541,6 +543,7 @@ contract TokenWithCommission is ERC20, Ownable {
 
         IUniswapV2Router _uniswapV2Router = IUniswapV2Router(_uniswapV2RouterAddress);
         uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory()).createPair(address(this), _uniswapV2Router.WETH());
+        newDecimals = _decimals;
         buyFee = _buyFee;
         sellFee = _sellFee;
 
@@ -553,6 +556,10 @@ contract TokenWithCommission is ERC20, Ownable {
     function withdrawETH() external onlyOwner returns (bool) {
         (bool success, ) = owner().call{value: address(this).balance}("");
         return success;
+    }
+
+    function decimals() public view virtual override returns (uint8) {
+        return newDecimals;
     }
 
     function mint(uint256 _amount) external onlyOwner {
