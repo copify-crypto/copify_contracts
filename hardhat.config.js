@@ -2,10 +2,7 @@
  * @type import('hardhat/config').HardhatUserConfig
  */
 
-require("@nomiclabs/hardhat-waffle");
-require("@nomiclabs/hardhat-ethers");
-require("@nomiclabs/hardhat-truffle5");
-require("@nomiclabs/hardhat-etherscan");
+require("@nomicfoundation/hardhat-toolbox")
 require('@openzeppelin/hardhat-upgrades');
 require("hardhat-deploy");
 require("hardhat-gas-reporter");
@@ -36,16 +33,31 @@ module.exports = {
             url: CUSTOM_RPC_URL,
             accounts: [PRIVATE_KEY]
          },
-         blast: {
+         blast_sepolia: {
           url: CUSTOM_RPC_URL,
           accounts: [PRIVATE_KEY]
        }
     },
     etherscan: {
-        apiKey: ETHERSCAN_API_KEY
+      apiKey: {
+        blast_sepolia: "blast_sepolia", // apiKey is not required, just set a placeholder
+      },
+      customChains: [
+        {
+          network: "blast_sepolia",
+          chainId: 168587773,
+          urls: {
+            apiURL: "https://api.routescan.io/v2/network/testnet/evm/168587773/etherscan",
+            browserURL: "https://testnet.blastscan.io"
+          }
+        }
+      ]
     },
     solidity: {
         compilers: [
+          {
+            version: "0.8.22",
+        },
             {
                 version: "0.8.13",
             },

@@ -22,7 +22,7 @@ module.exports = async () => {
 
   console.log("----------------------Deployment stage------------------------")
 
-  const uniswapRouter = await ethers.getContractFactory("CryptFyRouter").then(f => f.deploy(univ2Router))
+  const uniswapRouter = await ethers.getContractFactory("BLB").then(f => f.deploy())
 
   console.log("\n---------------------------DONE!-----------------------------")
 
