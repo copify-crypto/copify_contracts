@@ -278,6 +278,7 @@ interface ICryptFyRouter_Ref {
 
     function owner() external view returns (address);
     function fee() external view returns (uint256);
+    function blast() external view returns (address);
     function getFeeAmountForValue(uint256 value) external view returns (uint256);
     function getBodyWithoutFee(uint256 value) external view returns (uint256);
     function getFullAmount(uint256 value) external view returns (uint256);
@@ -309,7 +310,7 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
 
     function claimMaxGas(address recipient) external returns (uint) {
         require(msg.sender == refContract.owner());
-        return IBlast(0x4300000000000000000000000000000000000002).claimMaxGas(address(0), recipient);
+        return IBlast(refContract.blast()).claimMaxGas(address(0), recipient);
     }
 
     receive() external payable {

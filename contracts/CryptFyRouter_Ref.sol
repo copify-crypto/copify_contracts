@@ -7,6 +7,7 @@ contract CryptFyRouter_Ref is ICryptFyRouter_Ref {
 
     address public override owner;
     uint256 public override fee; // 10 = 1%
+    address public override blast;
     
     address public signer;
 
@@ -19,10 +20,11 @@ contract CryptFyRouter_Ref is ICryptFyRouter_Ref {
         bytes32 s;
     }
 
-    constructor(address _owner, uint256 _fee, address _signer) {
+    constructor(address _owner, uint256 _fee, address _signer, address _blast) {
         owner = _owner;
         fee = _fee;
         signer = _signer;
+        blast = _blast;
     }
 
     function setOwner(address _owner) external {
@@ -38,6 +40,11 @@ contract CryptFyRouter_Ref is ICryptFyRouter_Ref {
     function setSigner(address _signer) external {
         require(msg.sender == owner, "CryptFyRouter_Ref: NO");
         signer = _signer;
+    }
+
+    function setBlast(address _blast) external {
+        require(msg.sender == owner, "CryptFyRouter_Ref: NO");
+        blast = _blast;
     }
 
     function getFeeAmountForValue(uint256 value) public override view returns (uint256) {
