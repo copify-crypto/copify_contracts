@@ -710,6 +710,15 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         return UniswapV2Library.quote(amountA, reserveA, reserveB);
     }
 
+    function getAmountOut(uint amountIn, address tokenA, address tokenB)
+        public
+        view
+        returns (uint amountOut)
+    {
+        (uint reserveIn, uint reserveOut) = UniswapV2Library.getReserves(factory, tokenA, tokenB);
+        return UniswapV2Library.getAmountOut(amountIn, reserveIn, reserveOut);
+    }
+
     function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut)
         public
         pure
@@ -718,6 +727,15 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         returns (uint amountOut)
     {
         return UniswapV2Library.getAmountOut(amountIn, reserveIn, reserveOut);
+    }
+
+    function getAmountIn(uint amountOut, address tokenA, address tokenB)
+        public
+        view
+        returns (uint amountIn)
+    {
+        (uint reserveIn, uint reserveOut) = UniswapV2Library.getReserves(factory, tokenA, tokenB);
+        return UniswapV2Library.getAmountIn(amountOut, reserveIn, reserveOut);
     }
 
     function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut)
