@@ -76,7 +76,7 @@ interface ICryptFyRouter_Ref {
 
 /// @title Uniswap V3 Swap Router
 /// @notice Router for stateless execution of swaps against Uniswap V3
-contract SwapRouter is
+contract CryptFySwapRouter is
     ISwapRouter,
     PeripheryImmutableState,
     PeripheryValidation,

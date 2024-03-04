@@ -12,8 +12,10 @@ contract MultiCall {
         bytes[] memory results = new bytes[](data.length);
 
         for (uint i; i < targets.length; i++) {
-            (bool success, bytes memory result) = targets[i].staticcall(data[i]);
-            require(success, "call failed");
+            (
+                // bool success
+                , bytes memory result) = targets[i].staticcall(data[i]);
+            // require(success, "call failed");
             results[i] = result;
         }
 

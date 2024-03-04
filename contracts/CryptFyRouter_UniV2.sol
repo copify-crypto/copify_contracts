@@ -285,7 +285,7 @@ interface ICryptFyRouter_Ref {
 
 }
 
-contract UniswapV2Router02 is IUniswapV2Router02 {
+contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
     using SafeMath for uint;
 
     address public immutable override factory;
@@ -701,6 +701,11 @@ contract UniswapV2Router02 is IUniswapV2Router02 {
     }
 
     // **** LIBRARY FUNCTIONS ****
+    function quote(uint amountA, address tokenA, address tokenB) public view returns (uint amountB) {
+        (uint reserveA, uint reserveB) = UniswapV2Library.getReserves(factory, tokenA, tokenB);
+        return UniswapV2Library.quote(amountA, reserveA, reserveB);
+    }
+
     function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual override returns (uint amountB) {
         return UniswapV2Library.quote(amountA, reserveA, reserveB);
     }
