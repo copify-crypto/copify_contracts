@@ -17,16 +17,18 @@ module.exports = async () => {
   // const newContract = await ethers.getContractFactory("CryptFyRouterV2Router02").then(f => f.deploy(
   //   '0x1d7c894F0a2DBFfB9c8A1B854Fa26bfAdb95a7DF', // factory
   //   '0x4200000000000000000000000000000000000023', // weth
-  //   '0xAE8668dc89e7e8A2918D7Eb9ff59aBD9E883B9fD' // ref contract
+  //   '0x4552427848C3741022Fe695439Ad2EF630f84Db7' // ref contract
   // ))
 
-  // const newContract = await ethers.getContractFactory("CryptFySwapRouter").then(f => f.deploy(
-  //   '0xe05c310A68F0D3A30069A20cB6fAeD5612C70c88', // factory
-  //   '0x4200000000000000000000000000000000000023', // weth
-  //   '0xAE8668dc89e7e8A2918D7Eb9ff59aBD9E883B9fD' // ref contract
-  // ))
+  const newContract = await ethers.getContractFactory("CryptFySwapRouter").then(f => f.deploy(
+    '0xbAB2F66B5B3Be3cC158E3aC1007A8DF0bA5d67F4', // factory
+    '0x4200000000000000000000000000000000000023', // weth
+    '0x4552427848C3741022Fe695439Ad2EF630f84Db7' // ref contract
+  ))
 
-  const newContract = await ethers.getContractFactory("Quoter").then(f => f.deploy())
+  // const newContract = await ethers.getContractFactory("Quoter").then(f => f.deploy())
+
+  // const newContract = await ethers.getContractFactory("MultiCall").then(f => f.deploy())
 
   console.log("\n---------------------------DONE!-----------------------------")
 

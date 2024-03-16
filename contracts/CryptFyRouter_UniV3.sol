@@ -5,6 +5,7 @@ pragma abicoder v2;
 import '@uniswap/v3-core/contracts/libraries/SafeCast.sol';
 import '@uniswap/v3-core/contracts/libraries/TickMath.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 
 import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 import '@uniswap/v3-periphery/contracts/base/PeripheryImmutableState.sol';
@@ -13,8 +14,6 @@ import '@uniswap/v3-periphery/contracts/base/PeripheryPaymentsWithFee.sol';
 import '@uniswap/v3-periphery/contracts/base/Multicall.sol';
 import '@uniswap/v3-periphery/contracts/base/SelfPermit.sol';
 import '@uniswap/v3-periphery/contracts/libraries/Path.sol';
-import '@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol';
-import '@uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol';
 import '@uniswap/v3-periphery/contracts/interfaces/external/IWETH9.sol';
 
 enum YieldMode {
@@ -74,10 +73,64 @@ interface ICryptFyRouter_Ref {
 
 }
 
+library CallbackValidation {
+    /// @notice Returns the address of a valid Uniswap V3 Pool
+    /// @param factory The contract address of the Uniswap V3 factory
+    /// @param tokenA The contract address of either token0 or token1
+    /// @param tokenB The contract address of the other token
+    /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
+    /// @return pool The V3 pool contract address
+    function verifyCallback(
+        address factory,
+        address tokenA,
+        address tokenB,
+        uint24 fee
+    ) internal view returns (IUniswapV3Pool pool) {
+        return verifyCallback(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee));
+    }
+
+    /// @notice Returns the address of a valid Uniswap V3 Pool
+    /// @param factory The contract address of the Uniswap V3 factory
+    /// @param poolKey The identifying key of the V3 pool
+    /// @return pool The V3 pool contract address
+    function verifyCallback(address factory, PoolAddress.PoolKey memory poolKey)
+        internal
+        view
+        returns (IUniswapV3Pool pool)
+    {
+        if (poolKey.token0 > poolKey.token1) (poolKey.token0, poolKey.token1) = (poolKey.token1, poolKey.token0);
+        pool = IUniswapV3Pool(IUniswapV3Factory(factory).getPool(poolKey.token0, poolKey.token1, poolKey.fee));
+        require(msg.sender == address(pool));
+    }
+}
+
+library PoolAddress {
+
+    /// @notice The identifying key of the pool
+    struct PoolKey {
+        address token0;
+        address token1;
+        uint24 fee;
+    }
+
+    /// @notice Returns PoolKey: the ordered tokens with the matched fee levels
+    /// @param tokenA The first token of a pool, unsorted
+    /// @param tokenB The second token of a pool, unsorted
+    /// @param fee The fee level of the pool
+    /// @return Poolkey The pool details with ordered token0 and token1 assignments
+    function getPoolKey(
+        address tokenA,
+        address tokenB,
+        uint24 fee
+    ) internal pure returns (PoolKey memory) {
+        if (tokenA > tokenB) (tokenA, tokenB) = (tokenB, tokenA);
+        return PoolKey({token0: tokenA, token1: tokenB, fee: fee});
+    }
+}
+
 /// @title Uniswap V3 Swap Router
 /// @notice Router for stateless execution of swaps against Uniswap V3
 contract CryptFySwapRouter is
-    ISwapRouter,
     PeripheryImmutableState,
     PeripheryValidation,
     PeripheryPaymentsWithFee,
@@ -96,7 +149,7 @@ contract CryptFySwapRouter is
 
     ICryptFyRouter_Ref public refContract;
 
-    constructor(address _factory, address _WETH9, ICryptFyRouter_Ref _refContract) PeripheryImmutableState(_factory, _WETH9) {
+    constructor(address _WETH9, ICryptFyRouter_Ref _refContract) PeripheryImmutableState(address(0), _WETH9) {
         refContract = _refContract;
     }
 
@@ -113,11 +166,13 @@ contract CryptFySwapRouter is
 
     /// @dev Returns the pool for the given token pair and fee. The pool contract may or may not exist.
     function getPool(
+        address factory,
         address tokenA,
         address tokenB,
         uint24 fee
     ) private view returns (IUniswapV3Pool) {
-        return IUniswapV3Pool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
+        if (tokenA > tokenB) (tokenA, tokenB) = (tokenB, tokenA);
+        return IUniswapV3Pool(IUniswapV3Factory(factory).getPool(tokenA, tokenB, fee));
     }
 
     struct SwapCallbackData {
@@ -125,15 +180,15 @@ contract CryptFySwapRouter is
         address payer;
     }
 
-    /// @inheritdoc IUniswapV3SwapCallback
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata _data
-    ) external override {
+    ) external {
         require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
         SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
         (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
+        address factory = IUniswapV3Pool(msg.sender).factory();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
         (bool isExactInput, uint256 amountToPay) =
@@ -146,7 +201,7 @@ contract CryptFySwapRouter is
             // either initiate the next swap or pay
             if (data.path.hasMultiplePools()) {
                 data.path = data.path.skipToken();
-                exactOutputInternal(amountToPay, msg.sender, 0, data);
+                exactOutputInternal(factory, amountToPay, msg.sender, 0, data);
             } else {
                 amountInCached = amountToPay;
                 tokenIn = tokenOut; // swap in/out because exact output swaps are reversed
@@ -157,6 +212,7 @@ contract CryptFySwapRouter is
 
     /// @dev Performs a single exact input swap
     function exactInputInternal(
+        address factory,
         uint256 amountIn,
         address recipient,
         uint160 sqrtPriceLimitX96,
@@ -170,7 +226,7 @@ contract CryptFySwapRouter is
         bool zeroForOne = tokenIn < tokenOut;
 
         (int256 amount0, int256 amount1) =
-            getPool(tokenIn, tokenOut, fee).swap(
+            getPool(factory, tokenIn, tokenOut, fee).swap(
                 recipient,
                 zeroForOne,
                 amountIn.toInt256(),
@@ -183,17 +239,15 @@ contract CryptFySwapRouter is
         return uint256(-(zeroForOne ? amount1 : amount0));
     }
 
-    /// @inheritdoc ISwapRouter
-    function exactInputSingle(ExactInputSingleParams memory params)
+    function exactInputSingle(address factory, ISwapRouter.ExactInputSingleParams memory params)
         external
         payable
-        override
         checkDeadline(params.deadline)
         returns (uint256 amountOut)
     {
         if (params.tokenIn == address(WETH9)) {
             payable(address(refContract)).transfer(refContract.getFeeAmountForValue(params.amountIn));
-            params = ExactInputSingleParams({
+            params = ISwapRouter.ExactInputSingleParams({
                 tokenIn: params.tokenIn,
                 tokenOut: params.tokenOut,
                 fee: params.fee,
@@ -206,6 +260,7 @@ contract CryptFySwapRouter is
         }
 
         amountOut = exactInputInternal(
+            factory,
             params.amountIn,
             params.recipient,
             params.sqrtPriceLimitX96,
@@ -214,11 +269,9 @@ contract CryptFySwapRouter is
         require(amountOut >= params.amountOutMinimum, 'Too little received');
     }
 
-    /// @inheritdoc ISwapRouter
-    function exactInput(ExactInputParams memory params)
+    function exactInput(address factory, ISwapRouter.ExactInputParams memory params)
         external
         payable
-        override
         checkDeadline(params.deadline)
         returns (uint256 amountOut)
     {
@@ -227,7 +280,7 @@ contract CryptFySwapRouter is
         (address tokenIn,,) = params.path.decodeFirstPool();
         if (tokenIn == address(WETH9)) {
             payable(address(refContract)).transfer(refContract.getFeeAmountForValue(params.amountIn));
-            params = ExactInputParams({
+            params = ISwapRouter.ExactInputParams({
                 path: params.path,
                 recipient: params.recipient,
                 deadline: params.deadline,
@@ -241,6 +294,7 @@ contract CryptFySwapRouter is
 
             // the outputs of prior swaps become the inputs to subsequent ones
             params.amountIn = exactInputInternal(
+                factory,
                 params.amountIn,
                 hasMultiplePools ? address(this) : params.recipient, // for intermediate swaps, this contract custodies
                 0,
@@ -264,6 +318,7 @@ contract CryptFySwapRouter is
     }
 
     function exactOutputInternal(
+        address factory,
         uint256 amountOut,
         address recipient,
         uint160 sqrtPriceLimitX96,
@@ -277,7 +332,7 @@ contract CryptFySwapRouter is
         bool zeroForOne = tokenIn < tokenOut;
 
         (int256 amount0Delta, int256 amount1Delta) =
-            getPool(tokenIn, tokenOut, fee).swap(
+            getPool(factory, tokenIn, tokenOut, fee).swap(
                 recipient,
                 zeroForOne,
                 -amountOut.toInt256(),
@@ -295,18 +350,5 @@ contract CryptFySwapRouter is
         // so if no price limit has been specified, require this possibility away
         if (sqrtPriceLimitX96 == 0) require(amountOutReceived == amountOut);
     }
-
-    function exactOutputSingle(ExactOutputSingleParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amountIn) {}
-
-    /// @inheritdoc ISwapRouter
-    function exactOutput(ExactOutputParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amountIn) {}
 
 }

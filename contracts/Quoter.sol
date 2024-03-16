@@ -5,10 +5,65 @@ pragma abicoder v2;
 import '@uniswap/v3-core/contracts/libraries/SafeCast.sol';
 import '@uniswap/v3-core/contracts/libraries/TickMath.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
+import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 
 import '@uniswap/v3-periphery/contracts/libraries/Path.sol';
-import '@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol';
-import '@uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol';
+
+library CallbackValidation {
+    /// @notice Returns the address of a valid Uniswap V3 Pool
+    /// @param factory The contract address of the Uniswap V3 factory
+    /// @param tokenA The contract address of either token0 or token1
+    /// @param tokenB The contract address of the other token
+    /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
+    /// @return pool The V3 pool contract address
+    function verifyCallback(
+        address factory,
+        address tokenA,
+        address tokenB,
+        uint24 fee
+    ) internal view returns (IUniswapV3Pool pool) {
+        return verifyCallback(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee));
+    }
+
+    /// @notice Returns the address of a valid Uniswap V3 Pool
+    /// @param factory The contract address of the Uniswap V3 factory
+    /// @param poolKey The identifying key of the V3 pool
+    /// @return pool The V3 pool contract address
+    function verifyCallback(address factory, PoolAddress.PoolKey memory poolKey)
+        internal
+        view
+        returns (IUniswapV3Pool pool)
+    {
+        if (poolKey.token0 > poolKey.token1) (poolKey.token0, poolKey.token1) = (poolKey.token1, poolKey.token0);
+        pool = IUniswapV3Pool(IUniswapV3Factory(factory).getPool(poolKey.token0, poolKey.token1, poolKey.fee));
+        require(msg.sender == address(pool));
+    }
+}
+
+library PoolAddress {
+
+    /// @notice The identifying key of the pool
+    struct PoolKey {
+        address token0;
+        address token1;
+        uint24 fee;
+    }
+
+    /// @notice Returns PoolKey: the ordered tokens with the matched fee levels
+    /// @param tokenA The first token of a pool, unsorted
+    /// @param tokenB The second token of a pool, unsorted
+    /// @param fee The fee level of the pool
+    /// @return Poolkey The pool details with ordered token0 and token1 assignments
+    function getPoolKey(
+        address tokenA,
+        address tokenB,
+        uint24 fee
+    ) internal pure returns (PoolKey memory) {
+        if (tokenA > tokenB) (tokenA, tokenB) = (tokenB, tokenA);
+        return PoolKey({token0: tokenA, token1: tokenB, fee: fee});
+    }
+
+}
 
 /// @title Provides quotes for swaps
 /// @notice Allows getting the expected amount out or amount in for a given swap without executing the swap
@@ -72,33 +127,8 @@ contract Quoter {
         address tokenB,
         uint24 fee
     ) private view returns (IUniswapV3Pool) {
-        return IUniswapV3Pool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
-    }
-
-    function quoteExactInputSingle(
-        address factory,
-        address tokenIn,
-        address tokenOut,
-        uint24 fee,
-        uint256 amountIn
-    ) public returns (uint256 amountOut) {
-        bool zeroForOne = tokenIn < tokenOut;
-
-        (uint160 sqrtPriceLimitX96,,,,,,) = getPool(factory, tokenIn, tokenOut, fee).slot0();
-
-        try
-            getPool(factory, tokenIn, tokenOut, fee).swap(
-                address(this), // address(0) might cause issues with some tokens
-                zeroForOne,
-                amountIn.toInt256(),
-                sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
-                    : sqrtPriceLimitX96,
-                abi.encodePacked(tokenIn, fee, tokenOut)
-            )
-        {} catch (bytes memory reason) {
-            return parseRevertReason(reason);
-        }
+        if (tokenA > tokenB) (tokenA, tokenB) = (tokenB, tokenA);
+        return IUniswapV3Pool(IUniswapV3Factory(factory).getPool(tokenA, tokenB, fee));
     }
 
     function quoteExactInputSingle(
