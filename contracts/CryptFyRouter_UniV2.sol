@@ -118,7 +118,6 @@ interface IUniswapV2Pair {
 }
 
 interface IUniswapV2Router01 {
-    function factory() external pure returns (address);
     function WETH() external pure returns (address);
 
     function addLiquidity(
@@ -285,11 +284,10 @@ interface ICryptFyRouter_Ref {
 
 }
 
-contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
+contract CryptFyRouterV2Router02 {
     using SafeMath for uint;
 
-    address public immutable override factory;
-    address public immutable override WETH;
+    address public immutable WETH;
     ICryptFyRouter_Ref public refContract;
 
     modifier ensure(uint deadline) {
@@ -297,8 +295,7 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         _;
     }
 
-    constructor(address _factory, address _WETH, ICryptFyRouter_Ref _refContract) public {
-        factory = _factory;
+    constructor(address _WETH, ICryptFyRouter_Ref _refContract) public {
         WETH = _WETH;
         refContract = _refContract;
     }
@@ -319,6 +316,7 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
 
     // **** ADD LIQUIDITY ****
     function _addLiquidity(
+        address factory,
         address tokenA,
         address tokenB,
         uint amountADesired,
@@ -347,6 +345,7 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         }
     }
     function addLiquidity(
+        address factory,
         address tokenA,
         address tokenB,
         uint amountADesired,
@@ -355,22 +354,24 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         uint amountBMin,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
-        (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
+    ) external virtual ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
+        (amountA, amountB) = _addLiquidity(factory, tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
         address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
         TransferHelper.safeTransferFrom(tokenB, msg.sender, pair, amountB);
         liquidity = IUniswapV2Pair(pair).mint(to);
     }
     function addLiquidityETH(
+        address factory,
         address token,
         uint amountTokenDesired,
         uint amountTokenMin,
         uint amountETHMin,
         address to,
         uint deadline
-    ) external virtual override payable ensure(deadline) returns (uint amountToken, uint amountETH, uint liquidity) {
+    ) external virtual payable ensure(deadline) returns (uint amountToken, uint amountETH, uint liquidity) {
         (amountToken, amountETH) = _addLiquidity(
+            factory,
             token,
             WETH,
             amountTokenDesired,
@@ -389,6 +390,7 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
 
     // **** REMOVE LIQUIDITY ****
     function removeLiquidity(
+        address factory,
         address tokenA,
         address tokenB,
         uint liquidity,
@@ -396,7 +398,7 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         uint amountBMin,
         address to,
         uint deadline
-    ) public virtual override ensure(deadline) returns (uint amountA, uint amountB) {
+    ) public virtual ensure(deadline) returns (uint amountA, uint amountB) {
         address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);
         IUniswapV2Pair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
         (uint amount0, uint amount1) = IUniswapV2Pair(pair).burn(to);
@@ -406,14 +408,16 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         require(amountB >= amountBMin, 'UniswapV2Router: INSUFFICIENT_B_AMOUNT');
     }
     function removeLiquidityETH(
+        address factory,
         address token,
         uint liquidity,
         uint amountTokenMin,
         uint amountETHMin,
         address to,
         uint deadline
-    ) public virtual override ensure(deadline) returns (uint amountToken, uint amountETH) {
+    ) public virtual ensure(deadline) returns (uint amountToken, uint amountETH) {
         (amountToken, amountETH) = removeLiquidity(
+            factory,
             token,
             WETH,
             liquidity,
@@ -427,6 +431,7 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         TransferHelper.safeTransferETH(to, amountETH);
     }
     function removeLiquidityWithPermit(
+        address factory,
         address tokenA,
         address tokenB,
         uint liquidity,
@@ -435,13 +440,16 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         address to,
         uint deadline,
         bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external virtual override returns (uint amountA, uint amountB) {
-        address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);
-        uint value = approveMax ? uint(-1) : liquidity;
-        IUniswapV2Pair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
-        (amountA, amountB) = removeLiquidity(tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline);
+    ) external virtual returns (uint amountA, uint amountB) {
+        {
+            address pair = UniswapV2Library.pairFor(factory, tokenA, tokenB);
+            uint value = approveMax ? uint(-1) : liquidity;
+            IUniswapV2Pair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
+        }
+        (amountA, amountB) = removeLiquidity(factory, tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline);
     }
     function removeLiquidityETHWithPermit(
+        address factory,
         address token,
         uint liquidity,
         uint amountTokenMin,
@@ -449,23 +457,25 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         address to,
         uint deadline,
         bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external virtual override returns (uint amountToken, uint amountETH) {
+    ) external virtual returns (uint amountToken, uint amountETH) {
         address pair = UniswapV2Library.pairFor(factory, token, WETH);
         uint value = approveMax ? uint(-1) : liquidity;
         IUniswapV2Pair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
-        (amountToken, amountETH) = removeLiquidityETH(token, liquidity, amountTokenMin, amountETHMin, to, deadline);
+        (amountToken, amountETH) = removeLiquidityETH(factory, token, liquidity, amountTokenMin, amountETHMin, to, deadline);
     }
 
     // **** REMOVE LIQUIDITY (supporting fee-on-transfer tokens) ****
     function removeLiquidityETHSupportingFeeOnTransferTokens(
+        address factory,
         address token,
         uint liquidity,
         uint amountTokenMin,
         uint amountETHMin,
         address to,
         uint deadline
-    ) public virtual override ensure(deadline) returns (uint amountETH) {
+    ) public virtual ensure(deadline) returns (uint amountETH) {
         (, amountETH) = removeLiquidity(
+            factory,
             token,
             WETH,
             liquidity,
@@ -479,6 +489,7 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         TransferHelper.safeTransferETH(to, amountETH);
     }
     function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
+        address factory,
         address token,
         uint liquidity,
         uint amountTokenMin,
@@ -486,18 +497,18 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         address to,
         uint deadline,
         bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external virtual override returns (uint amountETH) {
+    ) external virtual returns (uint amountETH) {
         address pair = UniswapV2Library.pairFor(factory, token, WETH);
         uint value = approveMax ? uint(-1) : liquidity;
         IUniswapV2Pair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         amountETH = removeLiquidityETHSupportingFeeOnTransferTokens(
-            token, liquidity, amountTokenMin, amountETHMin, to, deadline
+            factory, token, liquidity, amountTokenMin, amountETHMin, to, deadline
         );
     }
 
     // **** SWAP ****
     // requires the initial amount to have already been sent to the first pair
-    function _swap(uint[] memory amounts, address[] memory path, address _to) internal virtual {
+    function _swap(address factory, uint[] memory amounts, address[] memory path, address _to) internal virtual {
         for (uint i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
             (address token0,) = UniswapV2Library.sortTokens(input, output);
@@ -510,37 +521,38 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         }
     }
     function swapExactTokensForTokens(
+        address factory,
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+    ) external virtual ensure(deadline) returns (uint[] memory amounts) {
         amounts = UniswapV2Library.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]
         );
-        _swap(amounts, path, to);
+        _swap(factory, amounts, path, to);
     }
     function swapTokensForExactTokens(
+        address factory,
         uint amountOut,
         uint amountInMax,
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+    ) external virtual ensure(deadline) returns (uint[] memory amounts) {
         amounts = UniswapV2Library.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'UniswapV2Router: EXCESSIVE_INPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]
         );
-        _swap(amounts, path, to);
+        _swap(factory, amounts, path, to);
     }
-    function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)
+    function swapExactETHForTokens(address factory, uint amountOutMin, address[] calldata path, address to, uint deadline)
         external
         virtual
-        override
         payable
         ensure(deadline)
         returns (uint[] memory amounts)
@@ -554,12 +566,11 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
 
         IWETH(WETH).deposit{value: amounts[0]}();
         assert(IWETH(WETH).transfer(UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]));
-        _swap(amounts, path, to);
+        _swap(factory, amounts, path, to);
     }
-    function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
+    function swapTokensForExactETH(address factory, uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
         external
         virtual
-        override
         ensure(deadline)
         returns (uint[] memory amounts)
     {
@@ -569,14 +580,13 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]
         );
-        _swap(amounts, path, address(this));
+        _swap(factory, amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
-    function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+    function swapExactTokensForETH(address factory, uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
         external
         virtual
-        override
         ensure(deadline)
         returns (uint[] memory amounts)
     {
@@ -586,14 +596,13 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]
         );
-        _swap(amounts, path, address(this));
+        _swap(factory, amounts, path, address(this));
         IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
-    function swapETHForExactTokens(uint amountOut, address[] calldata path, address to, uint deadline)
+    function swapETHForExactTokens(address factory, uint amountOut, address[] calldata path, address to, uint deadline)
         external
         virtual
-        override
         payable
         ensure(deadline)
         returns (uint[] memory amounts)
@@ -608,14 +617,14 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
 
         IWETH(WETH).deposit{value: amounts[0]}();
         assert(IWETH(WETH).transfer(UniswapV2Library.pairFor(factory, path[0], path[1]), amounts[0]));
-        _swap(amounts, path, to);
+        _swap(factory, amounts, path, to);
         // refund dust eth, if any
         if (msg.value > amount0Full) TransferHelper.safeTransferETH(msg.sender, msg.value - amount0Full);
     }
 
     // **** SWAP (supporting fee-on-transfer tokens) ****
     // requires the initial amount to have already been sent to the first pair
-    function _swapSupportingFeeOnTransferTokens(address[] memory path, address _to) internal virtual {
+    function _swapSupportingFeeOnTransferTokens(address factory, address[] memory path, address _to) internal virtual {
         for (uint i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
             (address token0,) = UniswapV2Library.sortTokens(input, output);
@@ -634,23 +643,25 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         }
     }
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        address factory,
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) {
+    ) external virtual ensure(deadline) {
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amountIn
         );
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
-        _swapSupportingFeeOnTransferTokens(path, to);
+        _swapSupportingFeeOnTransferTokens(factory, path, to);
         require(
             IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore) >= amountOutMin,
             'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT'
         );
     }
     function swapExactETHForTokensSupportingFeeOnTransferTokens(
+        address factory,
         uint amountOutMin,
         address[] calldata path,
         address to,
@@ -658,7 +669,6 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
     )
         external
         virtual
-        override
         payable
         ensure(deadline)
     {
@@ -671,13 +681,14 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         IWETH(WETH).deposit{value: amountIn}();
         assert(IWETH(WETH).transfer(UniswapV2Library.pairFor(factory, path[0], path[1]), amountIn));
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
-        _swapSupportingFeeOnTransferTokens(path, to);
+        _swapSupportingFeeOnTransferTokens(factory, path, to);
         require(
             IERC20(path[path.length - 1]).balanceOf(to).sub(balanceBefore) >= amountOutMin,
             'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT'
         );
     }
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
+        address factory,
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
@@ -686,14 +697,13 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
     )
         external
         virtual
-        override
         ensure(deadline)
     {
         require(path[path.length - 1] == WETH, 'UniswapV2Router: INVALID_PATH');
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, UniswapV2Library.pairFor(factory, path[0], path[1]), amountIn
         );
-        _swapSupportingFeeOnTransferTokens(path, address(this));
+        _swapSupportingFeeOnTransferTokens(factory, path, address(this));
         uint amountOut = IERC20(WETH).balanceOf(address(this));
         require(amountOut >= amountOutMin, 'UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT');
         IWETH(WETH).withdraw(amountOut);
@@ -701,16 +711,16 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
     }
 
     // **** LIBRARY FUNCTIONS ****
-    function quote(uint amountA, address tokenA, address tokenB) public view returns (uint amountB) {
+    function quote(address factory, uint amountA, address tokenA, address tokenB) public view returns (uint amountB) {
         (uint reserveA, uint reserveB) = UniswapV2Library.getReserves(factory, tokenA, tokenB);
         return UniswapV2Library.quote(amountA, reserveA, reserveB);
     }
 
-    function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual override returns (uint amountB) {
+    function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual returns (uint amountB) {
         return UniswapV2Library.quote(amountA, reserveA, reserveB);
     }
 
-    function getAmountOut(uint amountIn, address tokenA, address tokenB)
+    function getAmountOut(address factory, uint amountIn, address tokenA, address tokenB)
         public
         view
         returns (uint amountOut)
@@ -723,13 +733,12 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         public
         pure
         virtual
-        override
         returns (uint amountOut)
     {
         return UniswapV2Library.getAmountOut(amountIn, reserveIn, reserveOut);
     }
 
-    function getAmountIn(uint amountOut, address tokenA, address tokenB)
+    function getAmountIn(address factory, uint amountOut, address tokenA, address tokenB)
         public
         view
         returns (uint amountIn)
@@ -742,27 +751,24 @@ contract CryptFyRouterV2Router02 is IUniswapV2Router02 {
         public
         pure
         virtual
-        override
         returns (uint amountIn)
     {
         return UniswapV2Library.getAmountIn(amountOut, reserveIn, reserveOut);
     }
 
-    function getAmountsOut(uint amountIn, address[] memory path)
+    function getAmountsOut(address factory, uint amountIn, address[] memory path)
         public
         view
         virtual
-        override
         returns (uint[] memory amounts)
     {
         return UniswapV2Library.getAmountsOut(factory, amountIn, path);
     }
 
-    function getAmountsIn(uint amountOut, address[] memory path)
+    function getAmountsIn(address factory, uint amountOut, address[] memory path)
         public
         view
         virtual
-        override
         returns (uint[] memory amounts)
     {
         return UniswapV2Library.getAmountsIn(factory, amountOut, path);
